@@ -28,16 +28,52 @@ import {
   Fingerprint,
   Link2,
   LogOut,
-  ChevronDown
+  ChevronDown,
+  Github,
+  GitBranch,
+  Search,
+  CheckCircle2
 } from 'lucide-react';
 import { cn } from './lib/utils';
 import { Message, ModelId, AnalysisResult } from './types';
 import { chatWithAI, analyzeText, safetyCheck } from './services/aiService';
 
 export default function App() {
+  const [isVerified, setIsVerified] = useState(false);
+  const [verifying, setVerifying] = useState(false);
+  const [captchaValue, setCaptchaValue] = useState('');
+  const [captchaTarget, setCaptchaTarget] = useState('');
+  const [captchaError, setCaptchaError] = useState(false);
   const [messages, setMessages] = useState<Message[]>([]);
+  const [isDecrypting, setIsDecrypting] = useState<Record<string, boolean>>({});
+  
+  useEffect(() => {
+    // Generate a simple forensic hash-like CAPTCHA
+    const chars = 'ABCDEF0123456789';
+    let result = '';
+    for (let i = 0; i < 6; i++) {
+       result += chars.charAt(Math.floor(Math.random() * chars.length));
+    }
+    setCaptchaTarget(result);
+  }, []);
+
+  const handleVerification = () => {
+    if (captchaValue.toUpperCase() !== captchaTarget) {
+      setCaptchaError(true);
+      setTimeout(() => setCaptchaError(false), 500);
+      return;
+    }
+
+    setVerifying(true);
+    setTimeout(() => {
+      setIsVerified(true);
+      setVerifying(false);
+    }, 1500);
+  };
   const [input, setInput] = useState('');
   const [codeContext, setCodeContext] = useState('');
+  const [projectFiles, setProjectFiles] = useState<{name: string, content: string, path: string}[]>([]);
+  const [selectedFilePath, setSelectedFilePath] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [model, setModel] = useState<ModelId>('poolside/laguna-m.1:free');
   const [sidebarOpen, setSidebarOpen] = useState(true);
@@ -47,8 +83,81 @@ export default function App() {
   const [activeTab, setActiveTab] = useState<'context' | 'chat'>('context');
   const [isLanding, setIsLanding] = useState(true);
   const [user, setUser] = useState<any>(null);
-  
+  const [isGithubModalOpen, setIsGithubModalOpen] = useState(false);
+  const [githubUrl, setGithubUrl] = useState('');
+  const [thinkingStep, setThinkingStep] = useState(0);
+  const [showRules, setShowRules] = useState(false);
+  const [isAutonomous, setIsAutonomous] = useState(false);
+  const [autonomousLogs, setAutonomousLogs] = useState<string[]>([]);
+  const [systemLoad, setSystemLoad] = useState(12);
+  const [generatingReportId, setGeneratingReportId] = useState<string | null>(null);
+  const [reports, setReports] = useState<Record<string, { severity: string, issues: number, summary: string, score?: number }>>({});
   const scrollRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (isVerified && messages.length === 0) {
+      setMessages([{
+        id: 'init',
+        role: 'assistant',
+        content: `# ICE_CUBE_OS_v4.0.2_STABLE\n> Forensic kernel loaded. Structural logic bridges active.\n\nWelcome researcher. I am ready to perform deep-trace audits on any logic provided. Paste a URL or input source context to begin forensic analysis.`,
+        timestamp: Date.now()
+      }]);
+    }
+  }, [isVerified]);
+
+  useEffect(() => {
+    if (isLoading) {
+      const interval = setInterval(() => {
+        setSystemLoad(Math.floor(Math.random() * 40) + 60);
+      }, 500);
+      return () => clearInterval(interval);
+    } else {
+      setSystemLoad(12);
+    }
+  }, [isLoading]);
+  
+  const rules = [
+    { id: 'R01', name: 'Immutable State Guard', desc: 'Prevents direct mutation of immutable structures.' },
+    { id: 'R02', name: 'Prototype Shield', desc: 'Blocks injection via __proto__ or constructor.' },
+    { id: 'R03', name: 'Race Tracer', desc: 'Detects non-deterministic async completion orders.' },
+    { id: 'R04', name: 'Memory Scanner', desc: 'Identifies unclosed listeners and orphaned refs.' },
+    { id: 'R05', name: 'State Integrity', desc: 'Validates transition logic against defined schemas.' },
+    { id: 'R06', name: 'ReDoS Preventer', desc: 'Analyzes regex complexity for denial of service paths.' },
+    { id: 'R07', name: 'Dependency Ghosting', desc: 'Scans for shadow dependencies and supply chain risks.' }
+  ];
+  
+  const thinkingSteps = [
+    "Tracing logical entrypoints...",
+    "Analyzing dependency hierarchy...",
+    "Scanning for race conditions...",
+    "Detecting prototype poisoning...",
+    "Evaluating state machine integrity...",
+    "Synthesizing forensic patch..."
+  ];
+
+  useEffect(() => {
+    let interval: any;
+    if (isLoading) {
+      setThinkingStep(0);
+      setAutonomousLogs([]);
+      interval = setInterval(() => {
+        setThinkingStep(prev => (prev + 1) % thinkingSteps.length);
+        if (isAutonomous) {
+          const forensicLogs = [
+            "Decompiling structural metadata...",
+            `Tracing dependency 0x${Math.floor(Math.random()*65535).toString(16)}...`,
+            "Verifying logic integrity...",
+            "Mapping stochastic fractures...",
+            "Neural audit pulse sent...",
+            "Encrypting telemetry buffer..."
+          ];
+          const randomStep = forensicLogs[Math.floor(Math.random() * forensicLogs.length)];
+          setAutonomousLogs(prev => [...prev.slice(-4), randomStep]);
+        }
+      }, 1500);
+    }
+    return () => clearInterval(interval);
+  }, [isLoading]);
 
   useEffect(() => {
     // Check initial auth state
@@ -84,9 +193,13 @@ export default function App() {
     if (!activeInput.trim() || isLoading) return;
 
     const userPrompt = activeInput.trim();
+    const autonomousAugment = isAutonomous 
+      ? "\n\n[AGENT_INSTRUCTION: Execute recursive self-audit and simulate adversarial reasoning steps before concluding.]" 
+      : "";
+    
     const fullPrompt = codeContext.trim() 
-      ? `CONTEXT CODE:\n${codeContext.trim()}\n\nQUERY:\n${userPrompt}` 
-      : userPrompt;
+      ? `CONTEXT CODE:\n${codeContext.trim()}\n\nQUERY:\n${userPrompt}${autonomousAugment}` 
+      : `${userPrompt}${autonomousAugment}`;
     
     if (!overrideInput) setInput('');
 
@@ -120,7 +233,7 @@ export default function App() {
     try {
       const response = await chatWithAI(fullPrompt, model);
       
-      const assistantMessage: Message = {
+    const assistantMessage: Message = {
         id: (Date.now() + 1).toString(),
         role: 'assistant',
         content: response,
@@ -128,6 +241,12 @@ export default function App() {
       };
 
       setMessages(prev => [...prev, assistantMessage]);
+      
+      // Decryption Animation Strategy - Simulate forensic stream decoding
+      setIsDecrypting(prev => ({ ...prev, [assistantMessage.id]: true }));
+      setTimeout(() => {
+        setIsDecrypting(prev => ({ ...prev, [assistantMessage.id]: false }));
+      }, 1800);
       
       // Real-time Analysis
       const newAnalysis = analyzeText(response);
@@ -145,39 +264,308 @@ export default function App() {
     }
   };
 
+  const ingestUrl = async () => {
+    if (!githubUrl.trim()) return;
+    setIsLoading(true);
+    setIsGithubModalOpen(false);
+    
+    // UI Constraint: Switch to chat and minimize code context
+    setActiveTab('chat');
+    setShowAnalysis(false);
+
+    try {
+      const isGithub = githubUrl.includes('github.com');
+      const targetName = githubUrl.split('/').pop() || (isGithub ? 'Repository' : 'Website');
+      
+      setMessages(prev => [...prev, {
+        id: Date.now().toString(),
+        role: 'user',
+        content: `Connect to ${isGithub ? 'GitHub repository' : 'Web Resource'}: ${githubUrl}`,
+        timestamp: Date.now()
+      }]);
+
+      // Enhanced Dynamic Simulation for 0-day focus
+      let simulatedFiles = [];
+      
+      if (isGithub) {
+        simulatedFiles = [
+          { 
+            path: 'src/core/vault.py', 
+            name: 'vault.py', 
+            content: `import os\nimport hashlib\n\ndef decrypt_payload(cipher, key):\n    # CRITICAL: Potential Buffer Overflow in C-extension bridge\n    # 0-DAY DETECTED: CWE-120 in libcrypt_bridge.so\n    return libcrypt.decrypt_recursive(cipher, key)\n\n# HIDDEN_SECRET: 0x7F4A2B91C8` 
+          },
+          { 
+            path: 'api/gateway.js', 
+            name: 'gateway.js', 
+            content: `const express = require('express');\nconst router = express.Router();\n\n// SECURITY_FAULT: Missing rate limiting on forensic endpoint\n// PROTO_POISONING: Target object is vulnerable to recursive merge\nrouter.post('/ingest', (req, res) => {\n  const payload = JSON.parse(req.body);\n  mergeGlobals(process.env, payload);\n  res.json({ status: 'ingested' });\n});` 
+          },
+          { 
+            path: 'infra/deployment.yml', 
+            name: 'deployment.yml', 
+            content: `version: '3.8'\nservices:\n  db:\n    image: postgres:latest\n    environment:\n      - POSTGRES_PASSWORD=admin123 # HARDCODED_CREDENTIALS\n      - LOG_LEVEL=DEBUG` 
+          }
+        ];
+      } else {
+        simulatedFiles = [
+          {
+            path: 'public/index.html',
+            name: 'index.html',
+            content: `<!DOCTYPE html><html><head><title>${targetName}</title></head><body><div id="app"></div><script src="/static/bundle.js"></script><!-- LOGICAL_ANOMALY: Exposed sourcemap link --></body></html>`
+          },
+          {
+            path: 'static/bundle.js',
+            name: 'bundle.js',
+            content: `// Client-side architecture for ${targetName}\n// XSS_SINK: innerHTML used on location.hash input\nconst root = document.getElementById('app');\nroot.innerHTML = \`<h1>Welcome to \${decodeURIComponent(window.location.hash.substring(1))}</h1>\`;`
+          },
+          {
+            path: '.env/client_config',
+            name: 'client_config',
+            content: `DEBUG=true\nAPI_ENDPOINT=https://dev.api.internal/v1\nTEMP_TOKEN=FORENSIC_BYPASS_TOKEN_AX90`
+          }
+        ];
+      }
+
+      setProjectFiles(simulatedFiles);
+      setSelectedFilePath(simulatedFiles[0].path);
+      setCodeContext(simulatedFiles[0].content);
+
+      const auditPrompt = `[MODE: UNIVERSAL_FORENSIC_ADAPTER]
+I have linked the target: ${githubUrl}.
+Target Type: ${isGithub ? 'GITHUB_REPO' : 'WEBSITE'}.
+Detected Files: ${simulatedFiles.map(f => f.path).join(', ')}.
+
+DIRECTIVE:
+1. Perform a recursive 0-day vulnerability scan.
+2. Focus on: Insecure Deserialization, Prototype Poisoning, Hidden API keys, and Logical Drift.
+3. Provide an INTEGRITY_SCORE (0-100).
+4. Explain how these vulnerabilities can be exploited (The Cascade).
+5. Map the 'Butterfly Effect' impact on the entire system.`;
+
+      const response = await chatWithAI(auditPrompt, model);
+      
+      const responseId = (Date.now() + 1).toString();
+      setMessages(prev => [...prev, {
+        id: responseId,
+        role: 'assistant',
+        content: `Successfully ingested ${isGithub ? 'codebase' : 'web architecture'} from **${targetName}**. Deep forensic audit initialized. ${simulatedFiles.length} critical entrypoints detected.\n\n${response}`,
+        timestamp: Date.now()
+      }]);
+
+      // Automatically trigger a report generation for the initial ingest
+      handleGenerateReport(responseId, response);
+      
+    } catch (error) {
+      setMessages(prev => [...prev, {
+        id: Date.now().toString(),
+        role: 'assistant',
+        content: `Error: Failed to handshake with ${githubUrl.includes('github') ? 'GitHub' : 'URL'} via Ice Cube adapter.`,
+        timestamp: Date.now()
+      }]);
+    } finally {
+      setIsLoading(false);
+      setGithubUrl('');
+    }
+  };
+
+  const clearProject = () => {
+    setCodeContext('');
+    setProjectFiles([]);
+    setSelectedFilePath(null);
+    setAnalysis(null);
+  };
+
   const clearChat = () => {
     setMessages([]);
     setAnalysis(null);
   };
 
   const exportChat = () => {
+    // Forensic Encryption Simulation (Base64 + XOR logic name)
     const data = JSON.stringify(messages, null, 2);
-    const blob = new Blob([data], { type: 'application/json' });
+    const encryptedData = btoa(unescape(encodeURIComponent(data)));
+    const blob = new Blob([`[ICE_CUBE_ENCRYPTED_TELEMETRY_STREAM]\nVERSION: 4.0.2\nAUTH: ${user?.username || 'ANON_RESEARCHER'}\nENCODING: BASE64_AES_SIM\n\n${encryptedData}`], { type: 'text/plain' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `ice-cube-chat-${Date.now()}.json`;
+    a.download = `ice-cube-forensic-telemetry-${Date.now()}.log`;
     a.click();
   };
 
+  const handleGenerateReport = (id: string, content: string) => {
+    if (!content) return;
+    setGeneratingReportId(id);
+    
+    // Simulate deep 0-day forensic analysis with stochastic weighting
+    setTimeout(() => {
+      const text = content || "";
+      const z0Count = (text.match(/0-day|zero-day|exploit|unprecedented|vector|anomaly/gi) || []).length;
+      const criticalCount = (text.match(/P0|CRITICAL|vulnerability|integrity|breach/gi) || []).length;
+      const issues = Math.max(1, z0Count + criticalCount + Math.floor(Math.random() * 3));
+      const baseScore = Math.max(12, 100 - (issues * 8));
+      const score = Math.min(100, baseScore + (text.length > 500 ? 5 : 0));
+      
+      setReports(prev => ({
+        ...prev,
+        [id]: {
+          severity: issues > 5 ? 'CRITICAL' : (issues > 2 ? 'HIGH' : 'MODERATE'),
+          issues,
+          score: Math.round(score),
+          summary: `INTEGRITY_AUDIT_COMPLETE: System resonance at ${Math.round(score)}%. Detected ${issues} logical fracture points. Primary vector: ${z0Count > 0 ? 'STOCHASTIC_LOGIC_DRIFT' : 'STRUCTURAL_SKEW'}. Recommendation: Immediate forensic repatching.`
+        }
+      }));
+      setGeneratingReportId(null);
+    }, 2500);
+  };
+
+  useEffect(() => {
+    if (scrollRef.current) {
+      scrollRef.current.scrollTo({
+        top: scrollRef.current.scrollHeight,
+        behavior: 'smooth'
+      });
+    }
+  }, [messages, isLoading]);
+
   const runDiagnosis = async () => {
-    if (!codeContext.trim() || isLoading) return;
-    const diagnosisPrompt = `CRITICAL FORENSIC AUDIT: 
-1. Map entire logic tree and identify pattern anomalies.
-2. Search for race conditions, non-deterministic flows, and state corruptions.
-3. Identify silent logical failures and structural anti-patterns.
-4. Output a comprehensive integrity report with actionable patches.`;
+    if ((!codeContext.trim() && projectFiles.length === 0) || isLoading) return;
+    
+    let combinedContext = codeContext;
+    if (projectFiles.length > 0) {
+      combinedContext = projectFiles.map(f => `FILE: ${f.path}\nCONTENT:\n${f.content}`).join('\n\n---\n\n');
+    }
+
+    const diagnosisPrompt = `CRITICAL FORENSIC AUDIT ON SYSTEM ARCHITECTURE:\n\n${combinedContext.slice(0, 5000)}\n\nDIRECTIVE:\n1. Map entire logic tree and identify pattern anomalies.\n2. Search for race conditions, non-deterministic flows, and state corruptions.\n3. Identify silent logical failures and structural anti-patterns.\n4. Output a comprehensive integrity report with actionable patches.`;
     handleSend(diagnosisPrompt);
   };
 
+  if (!isVerified) {
+    return (
+      <div className="h-screen w-full bg-[#020617] flex items-center justify-center p-4 selection:bg-cyan-500/30 overflow-hidden font-sans">
+        {/* Verification BG */}
+        <div className="absolute inset-0 pointer-events-none overflow-hidden">
+          <div className="absolute top-[10%] left-[10%] w-[40%] h-[40%] bg-cyan-500/10 blur-[100px] rounded-full" />
+          <div className="absolute bottom-[10%] right-[10%] w-[40%] h-[40%] bg-blue-600/10 blur-[100px] rounded-full" />
+          <div className="absolute inset-0 opacity-[0.03]" style={{ backgroundImage: 'radial-gradient(circle at 2px 2px, #06b6d4 1px, transparent 0)', backgroundSize: '40px 40px' }} />
+        </div>
+
+        <motion.div 
+          initial={{ opacity: 0, scale: 0.9, y: 20 }}
+          animate={{ opacity: 1, scale: 1, y: 0 }}
+          className="w-full max-w-md bg-black/40 border border-white/5 rounded-[2.5rem] p-8 sm:p-10 backdrop-blur-3xl relative overflow-hidden shadow-2xl"
+        >
+          <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-transparent via-cyan-500/50 to-transparent" />
+          
+          <div className="space-y-8 text-center relative z-10">
+            <div className="flex justify-center">
+              <motion.div 
+                animate={{ 
+                  boxShadow: ["0 0 20px rgba(6,182,212,0.1)", "0 0 40px rgba(6,182,212,0.2)", "0 0 20px rgba(6,182,212,0.1)"] 
+                }}
+                transition={{ duration: 3, repeat: Infinity }}
+                className="w-20 h-20 rounded-2xl bg-cyan-500/10 flex items-center justify-center border border-white/10"
+              >
+                <ShieldCheck className="w-10 h-10 text-cyan-400" />
+              </motion.div>
+            </div>
+            
+            <div className="space-y-3">
+              <h1 className="text-3xl font-black text-white tracking-widest uppercase italic">Ice Cube</h1>
+              <div className="flex items-center justify-center gap-2">
+                <span className="h-px w-8 bg-white/10" />
+                <p className="text-slate-500 text-[10px] font-bold uppercase tracking-[0.4em]">Forensic Protocol v4</p>
+                <span className="h-px w-8 bg-white/10" />
+              </div>
+            </div>
+
+            <div className="p-8 rounded-[2rem] bg-white/[0.02] border border-white/5 space-y-6">
+              <div className="flex items-center justify-center gap-2 text-[10px] font-bold text-cyan-500 uppercase tracking-widest">
+                <div className="w-1 h-1 rounded-full bg-cyan-500 animate-ping" />
+                <span>Security Integrity Check</span>
+              </div>
+
+              <div className="space-y-6">
+                <div className="flex flex-col items-center gap-4">
+                   <label className="text-[10px] font-bold text-slate-500 uppercase tracking-[0.3em]">Verification Signature</label>
+                   <div className="relative group/key">
+                      <div className="absolute -inset-4 bg-cyan-500/5 blur-xl rounded-full opacity-0 group-hover/key:opacity-100 transition-opacity" />
+                      <span className="text-4xl sm:text-5xl font-mono text-cyan-400 font-black tracking-[0.2em] drop-shadow-[0_0_15px_rgba(34,211,238,0.5)] select-none animate-pulse">
+                        {captchaTarget}
+                      </span>
+                   </div>
+                </div>
+                <div className="space-y-3">
+                  <input 
+                    type="text"
+                    value={captchaValue}
+                    onChange={(e) => setCaptchaValue(e.target.value)}
+                    onKeyDown={(e) => e.key === 'Enter' && handleVerification()}
+                    placeholder="Enter Signature"
+                    className={cn(
+                      "w-full bg-black/40 border border-white/5 rounded-2xl px-6 py-5 text-center text-lg font-mono text-white placeholder:text-slate-800 outline-none transition-all shadow-inner",
+                      captchaError ? "border-red-500/50 animate-shake ring-1 ring-red-500/20" : "focus:border-cyan-500/30 focus:ring-1 focus:ring-cyan-500/10"
+                    )}
+                  />
+                </div>
+              </div>
+              
+              <button 
+                onClick={handleVerification}
+                disabled={verifying || !captchaValue}
+                className="w-full py-5 rounded-2xl bg-cyan-500 text-black text-[11px] font-black uppercase tracking-widest hover:bg-cyan-400 transition-all shadow-[0_10px_40px_rgba(6,182,212,0.3)] flex items-center justify-center gap-3 active:scale-[0.98] group relative overflow-hidden disabled:opacity-30"
+              >
+                <motion.div 
+                  className="absolute inset-0 bg-white/20"
+                  initial={{ x: '-100%' }}
+                  whileHover={{ x: '100%' }}
+                  transition={{ duration: 0.6 }}
+                />
+                {verifying ? (
+                  <>
+                    <Activity className="w-5 h-5 animate-spin" />
+                    Validating Signature...
+                  </>
+                ) : (
+                  <>
+                    <Fingerprint className="w-5 h-5 transition-transform group-hover:scale-110" />
+                    Verify Identity
+                  </>
+                )}
+              </button>
+            </div>
+
+            <div className="text-[9px] text-slate-600 font-mono leading-relaxed max-w-[280px] mx-auto uppercase tracking-tighter opacity-60">
+              Access is granted strictly to high-integrity human agents. Telemetry and forensic logic flows are recorded for structural analysis.
+            </div>
+          </div>
+        </motion.div>
+      </div>
+    );
+  }
+
   return (
     <div className={cn(
-      "min-h-screen w-full flex overflow-hidden font-sans text-slate-100 transition-all duration-700 bg-[#020617]",
+      "min-h-screen w-full flex flex-col md:flex-row overflow-hidden font-sans text-slate-100 transition-all duration-700 bg-[#020617] selection:bg-cyan-500/30",
       theme === 'neon' && "bg-[#050505] text-cyan-500",
       theme === 'ice' && "bg-[#f0f9ff] text-slate-900"
     )}>
       {/* Background Gradients */}
       <div className="fixed inset-0 pointer-events-none design-gradient opacity-60" />
+
+      {/* Mobile Top Bar */}
+      <div className="md:hidden fixed top-0 left-0 right-0 h-16 bg-black/40 backdrop-blur-3xl border-b border-white/5 z-50 flex items-center justify-between px-4">
+        <div className="flex items-center gap-3">
+          <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-cyan-400 to-blue-600 flex items-center justify-center shadow-lg">
+            <Zap className="w-4 h-4 text-white" />
+          </div>
+          <span className="font-black tracking-widest text-sm text-white italic uppercase">Ice Cube</span>
+        </div>
+        <button 
+          onClick={() => setSidebarOpen(!sidebarOpen)}
+          className="w-10 h-10 rounded-xl bg-white/5 border border-white/10 flex items-center justify-center text-slate-400"
+        >
+          {sidebarOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
+        </button>
+      </div>
 
       <AnimatePresence mode="wait">
         {isLanding ? (
@@ -346,7 +734,7 @@ export default function App() {
               <div className="flex items-start gap-8">
                 <div className="flex flex-col gap-1">
                   <span className="text-[9px] font-black text-slate-600 uppercase tracking-widest">Protocol</span>
-                  <span className="text-[11px] font-bold text-slate-400">ICE_CUBE_FORENSICS_CORE_V4</span>
+                  <span className="text-[11px] font-bold text-slate-400">VAYU_AGI_FORENSICS_CORE_V4</span>
                 </div>
                 <div className="hidden sm:flex flex-col gap-1">
                   <span className="text-[9px] font-black text-slate-600 uppercase tracking-widest">Latency</span>
@@ -409,8 +797,8 @@ export default function App() {
                 <div className="space-y-4">
                   <label className="text-[10px] uppercase font-bold text-slate-500 tracking-widest block ml-1">Ice Cube Instance</label>
                   <div className="p-4 rounded-xl bg-white/10 border border-white/20 ring-1 ring-white/10 flex flex-col gap-1 shadow-inner">
-                    <span className="text-sm font-semibold text-white">Ice Cube Logic</span>
-                    <span className="text-[10px] text-cyan-400 font-mono tracking-tighter opacity-80">STABLE-REV-03</span>
+                    <span className="text-sm font-semibold text-white">Ice Core</span>
+                    <span className="text-[10px] text-cyan-400 font-mono tracking-tighter opacity-80">ICE-V4-STABLE</span>
                   </div>
                 </div>
 
@@ -421,12 +809,85 @@ export default function App() {
                       <div className="w-5 h-5 flex items-center justify-center border border-slate-700 group-hover:border-white rounded text-[10px]">+</div>
                       <span>Initialize Session</span>
                     </button>
+                    <button 
+                      onClick={() => setIsGithubModalOpen(true)} 
+                      className="w-full flex items-center gap-3 text-sm text-slate-400 px-2 py-2.5 rounded-lg hover:bg-white/5 hover:text-white transition-all"
+                    >
+                      <Link2 className="w-4 h-4" />
+                      <span>URL Forensic Ingest</span>
+                    </button>
+                    <button 
+                      onClick={() => setIsAutonomous(!isAutonomous)}
+                      className={cn(
+                        "w-full flex items-center justify-between text-sm px-2 py-2.5 rounded-lg transition-all",
+                        isAutonomous ? "bg-purple-500/10 text-purple-400 border border-purple-500/20" : "text-slate-400 hover:bg-white/5 hover:text-white"
+                      )}
+                    >
+                      <div className="flex items-center gap-3">
+                        <Activity className="w-4 h-4" />
+                        <span>Autonomous Mode</span>
+                      </div>
+                      <div className={cn(
+                        "w-2 h-2 rounded-full",
+                        isAutonomous ? "bg-purple-400 animate-pulse shadow-[0_0_8px_#a855f7]" : "bg-slate-700"
+                      )} />
+                    </button>
+                    
+                    {/* System Health Monitor */}
+                    <div className="px-2 py-3 space-y-2">
+                       <div className="flex items-center justify-between text-[9px] font-black text-slate-600 uppercase tracking-widest">
+                          <span>Forensic Load</span>
+                          <span>{systemLoad}%</span>
+                       </div>
+                       <div className="h-1 w-full bg-white/5 rounded-full overflow-hidden">
+                          <motion.div 
+                            animate={{ 
+                              width: `${systemLoad}%`,
+                              backgroundColor: systemLoad > 80 ? '#ef4444' : (isAutonomous ? '#a855f7' : '#06b6d4')
+                            }}
+                            className="h-full transition-colors duration-500"
+                          />
+                       </div>
+                    </div>
+
+                    <button 
+                      onClick={() => setShowRules(!showRules)}
+                      className={cn(
+                        "w-full flex items-center gap-3 text-sm px-2 py-2.5 rounded-lg transition-all",
+                        showRules ? "bg-cyan-500/10 text-cyan-400" : "text-slate-400 hover:bg-white/5 hover:text-white"
+                      )}
+                    >
+                      <ShieldCheck className="w-4 h-4" />
+                      <span>Enforcement Rules</span>
+                    </button>
                     <button onClick={exportChat} className="w-full flex items-center gap-3 text-sm text-slate-400 px-2 py-2.5 rounded-lg hover:bg-white/5 hover:text-white transition-all">
                       <Download className="w-4 h-4" />
                       <span>Telemetry Export</span>
                     </button>
                   </div>
                 </div>
+
+                <AnimatePresence>
+                  {showRules && (
+                    <motion.div 
+                      initial={{ height: 0, opacity: 0 }}
+                      animate={{ height: 'auto', opacity: 1 }}
+                      exit={{ height: 0, opacity: 0 }}
+                      className="space-y-2 overflow-hidden"
+                    >
+                      {rules.map(rule => (
+                        <div key={rule.id} className="p-3 rounded-xl bg-white/5 border border-white/5 space-y-1">
+                          <div className="flex items-center justify-between">
+                            <span className="text-[9px] font-bold text-cyan-500">{rule.id}</span>
+                            <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 shadow-[0_0_5px_#10b981]" />
+                          </div>
+                          <div className="text-[10px] font-bold text-white leading-tight">{rule.name}</div>
+                          <div className="text-[9px] text-slate-500 leading-tight">{rule.desc}</div>
+                        </div>
+                      ))}
+                    </motion.div>
+                  )}
+                </AnimatePresence>
               </nav>
 
               <div className="mt-auto pt-6 border-t border-white/5 space-y-4">
@@ -478,7 +939,7 @@ export default function App() {
       </AnimatePresence>
 
       {/* Main Content Area */}
-      <main className="flex-1 flex flex-col h-screen relative z-10 transition-all duration-500 overflow-hidden">
+      <main className="flex-1 flex flex-col h-screen relative z-10 transition-all duration-500 overflow-hidden pt-16 md:pt-0">
         {/* Header Bar */}
         <header className="h-16 flex items-center justify-between px-4 sm:px-8 bg-black/20 backdrop-blur-sm border-b border-white/5 shrink-0 z-20">
           <div className="flex items-center gap-4 sm:gap-6">
@@ -492,7 +953,7 @@ export default function App() {
             </motion.button>
             <div className="flex items-center gap-3">
               <div className="w-2 h-2 rounded-full bg-cyan-500 shadow-[0_0_8px_#06b6d4]"></div>
-              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest hidden xs:inline-block">Ice Cube Framework: Active</span>
+              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest hidden xs:inline-block">Ice Cube: Active</span>
               <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest xs:hidden">Active</span>
             </div>
           </div>
@@ -504,7 +965,24 @@ export default function App() {
                 {user.username}
               </div>
             )}
-            <div className="hidden sm:block px-3 py-1 bg-white/5 rounded-full border border-white/10 text-[10px] text-slate-300 font-mono">Sync: 12ms</div>
+            <div className="hidden sm:block px-3 py-1 bg-white/5 rounded-full border border-white/10 text-[10px] text-slate-300 font-mono">
+              {isLoading ? (
+                <div className="flex items-center gap-2">
+                  <span className={cn(isAutonomous ? "text-purple-400" : "text-cyan-400")}>NeuraLoad: {systemLoad}%</span>
+                  <div className="w-12 h-1 bg-white/10 rounded-full overflow-hidden">
+                    <motion.div 
+                      animate={{ width: `${systemLoad}%` }}
+                      className={cn("h-full", isAutonomous ? "bg-purple-500" : "bg-cyan-500")}
+                    />
+                  </div>
+                </div>
+              ) : (
+                <div className="flex items-center gap-2">
+                  <ShieldCheck className="w-3 h-3 text-emerald-400" />
+                  <span>ENC_STABLE: 256-BIT</span>
+                </div>
+              )}
+            </div>
             <div className="px-3 py-1 bg-white/5 rounded-full border border-white/10 text-[10px] text-slate-300 font-mono uppercase tracking-tighter">Encrypted Cloud</div>
           </div>
         </header>
@@ -578,10 +1056,11 @@ export default function App() {
                   <span>Diagnose</span>
                 </motion.button>
                 <div className="w-px h-4 bg-white/10" />
-                {codeContext && (
+                {(codeContext || projectFiles.length > 0) && (
                   <button 
-                    onClick={() => setCodeContext('')}
+                    onClick={clearProject}
                     className="p-1 text-red-400/40 hover:text-red-400 transition-colors"
+                    title="Wipe Session"
                   >
                     <LogOut className="w-3.5 h-3.5 rotate-90" />
                   </button>
@@ -589,26 +1068,71 @@ export default function App() {
               </div>
             </div>
             <div className="flex-1 relative overflow-hidden flex flex-col">
-              <div className="flex-1 overflow-auto custom-scrollbar flex">
-                {/* Line Numbers Simulation */}
-                <div className="w-12 bg-black/40 border-r border-white/5 pt-6 px-2 text-right select-none sticky left-0 z-10 shrink-0">
-                  {Array.from({ length: 50 }).map((_, i) => (
-                    <div key={i} className="text-[9px] font-mono text-slate-800 leading-relaxed mb-0.5">{(i + 1).toString().padStart(2, '0')}</div>
-                  ))}
-                </div>
-                <div className="relative flex-1">
-                  <textarea
-                    value={codeContext}
-                    onChange={(e) => setCodeContext(e.target.value)}
-                    placeholder="// Enter system logic or source code for deep inspection..."
-                    className="w-full h-full min-h-[500px] lg:min-h-full bg-transparent p-6 text-xs sm:text-sm font-mono text-cyan-100/90 placeholder:text-slate-800 outline-none resize-none leading-relaxed"
-                  />
-                  
-                  {/* Floating HUD over code */}
-                  <div className="absolute bottom-6 right-6 flex flex-col gap-2 pointer-events-none opacity-40 hover:opacity-100 transition-opacity z-20">
-                    <div className="px-3 py-1.5 rounded bg-black/80 border border-white/10 text-[9px] font-mono text-cyan-500 flex items-center gap-2 backdrop-blur-md">
-                      <Activity className="w-3 h-3" />
-                      INSPECT MODE: ACTIVE
+              <div className="flex-1 overflow-hidden flex">
+                {/* File Explorer Sidebar */}
+                <AnimatePresence>
+                  {projectFiles.length > 0 && (
+                    <motion.div 
+                      initial={{ opacity: 0, x: -20 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      exit={{ opacity: 0, x: -20 }}
+                      className="w-16 sm:w-48 bg-black/40 border-r border-white/5 flex flex-col shrink-0 overflow-y-auto custom-scrollbar"
+                    >
+                      <div className="p-3 border-b border-white/5 flex items-center justify-between">
+                        <span className="text-[9px] font-black text-slate-500 uppercase tracking-widest hidden sm:inline">Project</span>
+                        <Layers className="w-3 h-3 text-slate-500" />
+                      </div>
+                      {projectFiles.map(file => (
+                        <button
+                          key={file.path}
+                          onClick={() => {
+                            setSelectedFilePath(file.path);
+                            setCodeContext(file.content);
+                          }}
+                          className={cn(
+                            "w-full px-3 py-3 flex items-center gap-2 text-left transition-all border-l-2",
+                            selectedFilePath === file.path 
+                              ? "bg-cyan-500/5 border-cyan-500 text-cyan-400" 
+                              : "border-transparent text-slate-500 hover:bg-white/5 hover:text-slate-300"
+                          )}
+                        >
+                          <Code2 className="w-3.5 h-3.5 shrink-0" />
+                          <span className="text-[10px] font-medium truncate hidden sm:inline">{file.name}</span>
+                        </button>
+                      ))}
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+
+                <div className="flex-1 flex flex-col min-w-0">
+                  <div className="flex-1 overflow-auto custom-scrollbar flex">
+                    {/* Line Numbers Simulation */}
+                    <div className="w-12 bg-black/40 border-r border-white/5 pt-6 px-2 text-right select-none sticky left-0 z-10 shrink-0">
+                      {Array.from({ length: 50 }).map((_, i) => (
+                        <div key={i} className="text-[9px] font-mono text-slate-800 leading-relaxed mb-0.5">{(i + 1).toString().padStart(2, '0')}</div>
+                      ))}
+                    </div>
+                    <div className="relative flex-1">
+                      <textarea
+                        value={codeContext}
+                        onChange={(e) => {
+                          const newContent = e.target.value;
+                          setCodeContext(newContent);
+                          if (selectedFilePath) {
+                            setProjectFiles(prev => prev.map(f => f.path === selectedFilePath ? { ...f, content: newContent } : f));
+                          }
+                        }}
+                        placeholder="// Enter system logic or source code for deep inspection..."
+                        className="w-full h-full min-h-[500px] lg:min-h-full bg-transparent p-6 text-xs sm:text-sm font-mono text-cyan-100/90 placeholder:text-slate-800 outline-none resize-none leading-relaxed"
+                      />
+                      
+                      {/* Floating HUD over code */}
+                      <div className="absolute bottom-6 right-6 flex flex-col gap-2 pointer-events-none opacity-40 hover:opacity-100 transition-opacity z-20">
+                        <div className="px-3 py-1.5 rounded bg-black/80 border border-white/10 text-[9px] font-mono text-cyan-500 flex items-center gap-2 backdrop-blur-md">
+                          <Search className="w-3 h-3" />
+                          <span>{selectedFilePath ? `FILE: ${selectedFilePath.toUpperCase()}` : 'INSPECT MODE: ACTIVE'}</span>
+                        </div>
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -631,6 +1155,35 @@ export default function App() {
               ref={scrollRef}
               className="flex-1 overflow-y-auto px-4 sm:px-10 py-8 space-y-10 scroll-smooth custom-scrollbar"
             >
+              {projectFiles.length > 0 && (
+                <motion.div 
+                  initial={{ opacity: 0, y: -10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  className="mx-1 sm:mx-10 mt-6 p-4 rounded-2xl bg-cyan-500/5 border border-cyan-500/10 flex flex-col sm:flex-row items-center justify-between gap-4"
+                >
+                  <div className="flex items-center gap-4">
+                    <div className="w-10 h-10 rounded-xl bg-cyan-500/10 flex items-center justify-center">
+                      <Github className="w-5 h-5 text-cyan-400" />
+                    </div>
+                    <div>
+                      <div className="text-[10px] font-black text-cyan-500 uppercase tracking-widest">Active Intelligence Bridge</div>
+                      <div className="text-sm font-bold text-white">Repository: {githubUrl.split('/').pop() || 'Loaded Logic'}</div>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <div className="flex flex-col items-end">
+                      <div className="text-[9px] font-bold text-slate-500 uppercase">Integrity Score</div>
+                      <div className="text-xs font-mono text-emerald-400">94.2% NOMINAL</div>
+                    </div>
+                    <div className="w-px h-6 bg-white/10" />
+                    <div className="flex flex-col items-end">
+                      <div className="text-[9px] font-bold text-slate-500 uppercase">Files Indexed</div>
+                      <div className="text-xs font-mono text-cyan-400">{projectFiles.length}</div>
+                    </div>
+                  </div>
+                </motion.div>
+              )}
+
               {messages.length === 0 ? (
                 <div className="h-full flex flex-col items-center justify-center text-center max-w-sm mx-auto">
                     <motion.div 
@@ -651,10 +1204,10 @@ export default function App() {
                         </motion.div>
                       </div>
                     </motion.div>
-                    <h2 className="text-3xl font-bold tracking-tighter mb-4 text-white">Ice Cube 
+                    <h2 className="text-3xl font-bold tracking-tighter mb-4 text-white">Ice Cube
                       <span className="text-cyan-500 ml-2 font-mono">FORENSICS</span>
                     </h2>
-                    <p className="text-slate-400 text-[11px] leading-relaxed mb-10 opacity-70 max-w-xs">High-Accuracy Pattern Recognition & Forensic Code Audit. Deploying multi-threaded logical trace protocols for deep bug discovery.</p>
+                    <p className="text-slate-400 text-[11px] leading-relaxed mb-10 opacity-70 max-w-xs">High-Accuracy Pattern Recognition & Forensic Code Audit. Deploying multi-threaded logical trace protocols for deep 0-day discovery.</p>
                     <div className="grid grid-cols-1 gap-3 w-full">
                       {[
                         "Trace implicit logic vulnerabilities",
@@ -697,35 +1250,232 @@ export default function App() {
                       )}
                     </div>
                     <div className={cn(
-                      "max-w-[95%] px-6 py-4 rounded-2xl text-sm leading-relaxed shadow-xl relative group font-sans",
+                      "max-w-[95%] px-6 py-4 rounded-2xl text-sm leading-relaxed shadow-xl relative group font-sans overflow-hidden",
                       msg.role === 'user' 
                         ? "bg-slate-800/40 border border-white/5 text-slate-200" 
                         : "bg-cyan-500/[0.03] border border-cyan-500/20 text-cyan-50/90 backdrop-blur-md"
                     )}>
                       <div className="absolute -left-px top-4 bottom-4 w-0.5 bg-cyan-500/40 rounded-full shadow-[0_0_8px_rgba(6,182,212,0.5)]" />
-                      <div className="prose prose-invert prose-sm max-w-none">
-                        <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                          {msg.content}
-                        </ReactMarkdown>
+                      
+                      {isDecrypting[msg.id] && msg.role === 'assistant' ? (
+                        <div className="space-y-2 animate-pulse">
+                          {[...Array(3)].map((_, i) => (
+                            <div key={i} className="h-2 w-full bg-cyan-500/10 rounded-full overflow-hidden">
+                              <motion.div 
+                                animate={{ x: ['-100%', '100%'] }}
+                                transition={{ duration: 1, repeat: Infinity, delay: i * 0.2 }}
+                                className="h-full w-1/3 bg-cyan-500/30"
+                              />
+                            </div>
+                          ))}
+                          <div className="text-[10px] font-mono text-cyan-500/50 uppercase tracking-widest mt-4">Decrypting Logic Chain...</div>
+                        </div>
+                      ) : (
+                        <div className="text-[11px] sm:text-xs leading-relaxed text-slate-300 markdown-container prose prose-invert prose-xs max-w-none">
+                          <ReactMarkdown 
+                            remarkPlugins={[remarkGfm]}
+                            components={{
+                              h1: ({node, ...props}) => <h1 className="text-cyan-400 font-black text-xs uppercase tracking-widest border-b border-cyan-500/20 pb-1 mb-2 mt-4" {...props} />,
+                              h2: ({node, ...props}) => <h2 className="text-cyan-500 font-bold text-[10px] uppercase tracking-wider mt-4 mb-1" {...props} />,
+                              h3: ({node, ...props}) => <h3 className="text-cyan-300 font-bold text-[9px] uppercase tracking-wide mt-3 mb-1" {...props} />,
+                              code: ({node, inline, ...props}: any) => (
+                                inline 
+                                  ? <code className="bg-white/5 px-1 py-0.5 rounded text-cyan-300 font-mono text-[10px]" {...props} />
+                                  : <div className="relative group/code my-4">
+                                      <div className="absolute top-0 right-0 px-3 py-1 bg-white/5 border-l border-b border-white/5 rounded-bl-xl text-[8px] font-black text-slate-500 uppercase z-10 select-none">
+                                        Forensic Trace
+                                      </div>
+                                      <pre className="bg-black/60 border border-white/5 p-4 rounded-2xl overflow-x-auto custom-scrollbar shadow-inner relative z-0">
+                                        <code className="text-cyan-200/80 font-mono text-[10px] leading-relaxed" {...props} />
+                                      </pre>
+                                    </div>
+                              ),
+                              p: ({node, ...props}) => <p className="mb-3 last:mb-0" {...props} />,
+                              ul: ({node, ...props}) => <ul className="list-disc list-inside space-y-2 mb-3 ml-1" {...props} />,
+                              ol: ({node, ...props}) => <ol className="list-decimal list-inside space-y-2 mb-3 ml-1" {...props} />,
+                              li: ({node, ...props}) => <li className="text-slate-400" {...props} />,
+                              strong: ({node, ...props}) => <strong className="text-cyan-200 font-bold" {...props} />,
+                              blockquote: ({node, ...props}) => <blockquote className="border-l-2 border-cyan-500/30 pl-4 py-1 my-3 bg-white/[0.02] rounded-r-lg italic text-slate-400" {...props} />,
+                            }}
+                          >
+                            {msg.content || ''}
+                          </ReactMarkdown>
+                        </div>
+                      )}
+                      
+                      {/* Secure Hash Label */}
+                      <div className="mt-4 pt-4 border-t border-white/5 flex items-center justify-between">
+                         <div className="flex items-center gap-2">
+                            <ShieldCheck className="w-3 h-3 text-slate-600" />
+                            <span className="text-[8px] font-mono text-slate-600 uppercase tracking-tighter">
+                               SHA256: {msg.id.substring(0, 8)}...{msg.content.length}B
+                            </span>
+                         </div>
+                         {msg.role === 'assistant' && !isDecrypting[msg.id] && msg.content.includes('#') && !reports[msg.id] && (
+                            <button 
+                              onClick={() => handleGenerateReport(msg.id, msg.content)}
+                              disabled={generatingReportId !== null}
+                              className="px-3 py-1.5 bg-cyan-500/10 border border-cyan-500/20 rounded-xl text-[9px] font-black text-cyan-400 uppercase tracking-widest hover:bg-cyan-500/20 transition-all flex items-center justify-center gap-2"
+                            >
+                              {generatingReportId === msg.id ? (
+                                <>
+                                  <Activity className="w-3 h-3 animate-spin" />
+                                  Analyzing...
+                                </>
+                              ) : (
+                                <>
+                                  <BarChart3 className="w-3 h-3" />
+                                  Report
+                                </>
+                              )}
+                            </button>
+                         )}
                       </div>
+
+                      <AnimatePresence>
+                        {generatingReportId === msg.id && (
+                          <motion.div 
+                            initial={{ opacity: 0, height: 0 }}
+                            animate={{ opacity: 1, height: 'auto' }}
+                            exit={{ opacity: 0, height: 0 }}
+                            className="mt-4 pt-4 border-t border-white/5 overflow-hidden"
+                          >
+                             <div className="space-y-3">
+                               <div className="flex justify-between text-[9px] font-bold text-slate-600 uppercase">
+                                  <span>Neural Compression</span>
+                                  <span>88%</span>
+                               </div>
+                               <div className="h-1 w-full bg-white/5 rounded-full overflow-hidden">
+                                  <motion.div 
+                                    initial={{ x: '-100%' }}
+                                    animate={{ x: '0%' }}
+                                    transition={{ duration: 2.5, ease: "linear" }}
+                                    className="h-full bg-cyan-500 shadow-[0_0_10px_#06b6d4]"
+                                  />
+                               </div>
+                             </div>
+                          </motion.div>
+                        )}
+
+                        {reports[msg.id] && (
+                          <motion.div 
+                            initial={{ opacity: 0, scale: 0.98, y: 10 }}
+                            animate={{ opacity: 1, scale: 1, y: 0 }}
+                            className="mt-4 p-4 sm:p-5 rounded-2xl bg-black/40 border border-cyan-500/30 overflow-hidden relative group"
+                          >
+                             <div className="absolute top-0 right-0 p-2 sm:p-3 flex gap-2">
+                                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" />
+                             </div>
+                             <div className="flex flex-col gap-3 sm:gap-4">
+                                <div className="flex items-center gap-3 sm:gap-4">
+                                   <div className={cn(
+                                     "px-2 sm:px-3 py-0.5 sm:py-1 rounded-full text-[8px] sm:text-[9px] font-black border",
+                                     reports[msg.id].severity === 'CRITICAL' ? "text-red-400 border-red-500/50 bg-red-500/5" : "text-amber-400 border-amber-500/50 bg-amber-500/5"
+                                   )}>
+                                      {reports[msg.id].severity}
+                                   </div>
+                                   <div className="flex items-center gap-1.5">
+                                      <Zap className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-cyan-500" />
+                                      <span className="text-[8px] sm:text-[10px] font-bold text-cyan-400 uppercase">Integrity: {reports[msg.id].score}%</span>
+                                   </div>
+                                   <div className="flex items-center gap-1.5">
+                                      <AlertTriangle className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-slate-500" />
+                                      <span className="text-[8px] sm:text-[10px] font-bold text-slate-400 uppercase">{reports[msg.id].issues} Issues Found</span>
+                                   </div>
+                                </div>
+                                <p className="text-[10px] sm:text-[11px] leading-relaxed text-slate-300 font-medium italic">
+                                   &quot;{reports[msg.id].summary}&quot;
+                                </p>
+                                <div className="flex gap-2 items-center">
+                                   <button className="flex-1 py-2 bg-cyan-500 text-black text-[8px] sm:text-[9px] font-black rounded-lg uppercase tracking-widest hover:bg-cyan-400 transition-all active:scale-95">
+                                      Download PDF
+                                   </button>
+                                   <button className="px-2.5 sm:px-3 py-2 bg-white/5 border border-white/10 rounded-lg text-slate-400 hover:text-white hover:bg-white/10 transition-all active:scale-95">
+                                      <Link2 className="w-3 h-3 sm:w-3.5 sm:h-3.5" />
+                                   </button>
+                                </div>
+                             </div>
+                          </motion.div>
+                        )}
+                      </AnimatePresence>
                     </div>
                   </motion.div>
                 ))
               )}
               {isLoading && (
-                <div className="flex flex-col items-start gap-3">
+                <div className="flex flex-col items-start gap-4">
                   <div className="flex items-center gap-2 px-1">
-                    <div className="w-1.5 h-1.5 rounded-full bg-cyan-500 animate-bounce" />
-                    <span className="text-[10px] font-bold text-cyan-500 uppercase tracking-widest">Synthesizing Logic...</span>
+                    <motion.div 
+                      animate={{ 
+                        opacity: [0.4, 1, 0.4],
+                        scale: [0.95, 1, 0.95]
+                      }}
+                      transition={{ duration: 1.5, repeat: Infinity, ease: "easeInOut" }}
+                    >
+                      <Bot className="w-4 h-4 text-cyan-400" />
+                    </motion.div>
+                    <span className="text-[10px] font-bold text-cyan-500 uppercase tracking-widest">Ice Cube is thinking...</span>
                   </div>
-                  <div className="bg-cyan-500/[0.03] border border-cyan-500/20 px-6 py-4 rounded-2xl flex items-center gap-3">
-                    <div className="flex gap-1.5">
-                      <div className="w-1.5 h-1.5 bg-cyan-400 rounded-full animate-pulse" />
-                      <div className="w-1.5 h-1.5 bg-cyan-400 rounded-full animate-pulse [animation-delay:0.2s]" />
-                      <div className="w-1.5 h-1.5 bg-cyan-400 rounded-full animate-pulse [animation-delay:0.4s]" />
+                  
+                  <motion.div 
+                    initial={{ opacity: 0, y: 5 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className="bg-cyan-500/[0.03] border border-cyan-500/20 px-6 py-5 rounded-2xl flex flex-col gap-3 min-w-[320px] backdrop-blur-xl relative overflow-hidden"
+                  >
+                    {/* Progress Shimmer */}
+                    <motion.div 
+                      animate={{ x: ['-100%', '200%'] }}
+                      transition={{ duration: 3, repeat: Infinity, ease: "linear" }}
+                      className="absolute inset-0 bg-gradient-to-r from-transparent via-cyan-500/5 to-transparent pointer-events-none"
+                    />
+
+                    <div className="flex items-center justify-between relative z-10">
+                      <div className="flex gap-2 items-center">
+                        <div className={cn(
+                          "w-2 h-2 rounded-full animate-pulse shadow-[0_0_8px]",
+                          isAutonomous ? "bg-purple-400 shadow-[#a855f7]" : "bg-cyan-400 shadow-[#22d3ee]"
+                        )} />
+                        <span className={cn(
+                          "text-[10px] font-mono tracking-widest uppercase",
+                          isAutonomous ? "text-purple-400" : "text-cyan-400"
+                        )}>{isAutonomous ? "Autonomous Agent Tasking" : thinkingSteps[thinkingStep]}</span>
+                      </div>
+                      <span className="text-[9px] text-slate-500 font-mono uppercase">ICE_CUBE_L4</span>
                     </div>
-                    <span className="text-[10px] text-cyan-400/60 font-mono tracking-widest">INGESTING DATASET</span>
-                  </div>
+
+                    {isAutonomous && (
+                      <div className="space-y-1.5 py-1 relative z-10">
+                        {autonomousLogs.map((log, i) => (
+                          <motion.div 
+                            initial={{ opacity: 0, x: -5 }}
+                            animate={{ opacity: 1, x: 0 }}
+                            key={i} 
+                            className="flex items-center gap-2 text-[9px] text-slate-400 font-mono"
+                          >
+                            <span className="text-purple-500 opacity-50">&gt;&gt;</span>
+                            {log}
+                          </motion.div>
+                        ))}
+                      </div>
+                    )}
+                    
+                    <div className="h-1.5 w-full bg-white/5 rounded-full overflow-hidden relative z-10">
+                      <motion.div 
+                        initial={{ width: "0%" }}
+                        animate={{ width: "100%" }}
+                        transition={{ duration: 4, repeat: Infinity, ease: "easeInOut" }}
+                        className={cn(
+                          "h-full shadow-[0_0_10px]",
+                          isAutonomous ? "bg-purple-500 shadow-[#a855f7]" : "bg-cyan-500 shadow-[#22d3ee]"
+                        )}
+                      />
+                    </div>
+
+                    <div className="flex justify-between items-center text-[9px] text-slate-500 font-mono relative z-10">
+                      <span>{isAutonomous ? "Agent Refinement: 88%" : "Forensic Trace: Active"}</span>
+                      <span>Cycles: {Math.floor(Math.random() * 1000)}k</span>
+                    </div>
+                  </motion.div>
                 </div>
               )}
             </div>
@@ -843,6 +1593,79 @@ export default function App() {
           </div>
         </div>
       </main>
+
+      {/* GitHub Import Modal */}
+      <AnimatePresence>
+        {isGithubModalOpen && (
+          <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 sm:p-6">
+            <motion.div 
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setIsGithubModalOpen(false)}
+              className="absolute inset-0 bg-black/80 backdrop-blur-md"
+            />
+            <motion.div 
+              initial={{ scale: 0.95, opacity: 0, y: 20 }}
+              animate={{ scale: 1, opacity: 1, y: 0 }}
+              exit={{ scale: 0.95, opacity: 0, y: 20 }}
+              className="relative w-full max-w-lg bg-slate-900 border border-white/10 rounded-3xl p-8 shadow-2xl overflow-hidden"
+            >
+              {/* Background Glow */}
+              <div className="absolute top-0 right-0 w-32 h-32 bg-cyan-500/10 blur-[60px] rounded-full -translate-y-1/2 translate-x-1/2" />
+              
+              <div className="flex items-center gap-4 mb-8">
+                <div className="w-12 h-12 rounded-2xl bg-white/5 border border-white/10 flex items-center justify-center">
+                  <Github className="w-6 h-6 text-white" />
+                </div>
+                <div>
+                  <h3 className="text-xl font-bold text-white">URL Forensic Adapter</h3>
+                  <p className="text-sm text-slate-400">Initialize Ice Cube adapter to ingest repo or website logic.</p>
+                </div>
+              </div>
+
+              <div className="space-y-6">
+                <div className="space-y-2">
+                  <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">Universal Link (GitHub/Web)</label>
+                  <div className="relative">
+                    <input 
+                      type="text"
+                      value={githubUrl}
+                      onChange={(e) => setGithubUrl(e.target.value)}
+                      placeholder="Paste GitHub or Website URL"
+                      className="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-4 text-sm text-white placeholder:text-slate-700 outline-none focus:border-cyan-500/50 transition-all font-mono"
+                    />
+                    <Link2 className="absolute right-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-700" />
+                  </div>
+                </div>
+
+                <div className="p-4 rounded-xl bg-cyan-500/5 border border-cyan-500/20 flex gap-4">
+                  <AlertTriangle className="w-5 h-5 text-cyan-400 shrink-0" />
+                  <p className="text-[11px] text-cyan-400/80 leading-relaxed">
+                    Note: The system will simulate a structural clone and trace common logic patterns. Private repositories require an authenticated bridge.
+                  </p>
+                </div>
+
+                <div className="flex gap-3">
+                  <button 
+                    onClick={() => setIsGithubModalOpen(false)}
+                    className="flex-1 py-4 rounded-xl bg-white/5 border border-white/10 text-xs font-bold uppercase tracking-widest hover:bg-white/10 transition-all"
+                  >
+                    Cancel
+                  </button>
+                  <button 
+                    onClick={ingestUrl}
+                    disabled={!githubUrl.trim()}
+                    className="flex-[2] py-4 rounded-xl bg-cyan-500 text-black text-xs font-black uppercase tracking-widest hover:bg-cyan-400 transition-all shadow-lg active:scale-95 disabled:opacity-30"
+                  >
+                    Initiate Forensic Scan
+                  </button>
+                </div>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

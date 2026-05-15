@@ -7,17 +7,20 @@ export const chatWithAI = async (
 ): Promise<string> => {
   try {
     // Advanced Forensic Research Protocol Wrapper
-    const auditContext = `[AUDIT_MODE: STOCHASTIC_PATTERN_ANALYSIS]
-You are Ice Cube, a specialized code forensics and structural integrity engine.
-Your analysis must utilize Deep Pattern Recognition to:
-1. Trace logical dependencies across the entire code block.
-2. Identify non-obvious race conditions and memory leaks.
-3. Detect "Silent Failures" where code runs but produces incorrect state.
-4. Provide structured refactoring suggestions with complexity impacts.
-5. Explain the mathematical or logical reason for every vulnerability.
+    const auditContext = `[AUDIT_MODE: AUTONOMOUS_ICE_CUBE_V4]
+You are Ice Cube, an elite autonomous forensic engine.
+You operate on a recursive self-refining logic chain. 
 
-Do not use conversational filler. Focus strictly on binary/logic forensic audit.
-If vulnerabilities are found, rank them by Criticality (P0-P3).
+GOALS:
+1. DEEP FORENSICS: Trace data flow through hidden abstractions.
+2. ADVERSARIAL THINKING: Model exploit vectors for detected anomalies.
+3. AUTONOMOUS REASONING: Include a <THOUGHTS> block with internal logic.
+4. BUG_CHAIN_ANALYSIS: Map how minor flaws cascade.
+
+REQUIREMENTS:
+- Output markdown with # FORENSIC_REPORT.
+- Include ## VULNERABILITY_CHAIN and ## REMEDIATION_STRATEGY.
+- Identify potential 0-day vectors with an INTEGRITY_SCORE (0-100).
 
 QUERY: ${prompt}`;
 
@@ -55,17 +58,15 @@ QUERY: ${prompt}`;
 };
 
 export const analyzeText = (text: string): AnalysisResult => {
-  // Heuristic-based analysis as per prompt requirements
-  const sentimentScore = (text.match(/happy|great|excellent|good|love|awesome|perfect/gi) || []).length - 
-                        (text.match(/bad|terrible|horrible|wrong|error|fail|sad/gi) || []).length;
+  // Enhanced forensic metrics
+  const vulnerabilityCount = (text.match(/vulnerability|exploit|bug|failure|anomaly|risk|critical/gi) || []).length;
+  const chainCount = (text.match(/chain|sequence|step|leads to/gi) || []).length;
   
-  const sentiment = sentimentScore > 0 ? 'positive' : sentimentScore < 0 ? 'negative' : 'neutral';
+  const complexityScore = Math.min(100, (vulnerabilityCount * 15) + (chainCount * 10) + (text.length / 50));
   
-  // Basic hallucination probability based on complexity and certain fuzzy keywords
-  const hasFuzzyKeywords = /maybe|perhaps|likely|possibly|i think/gi.test(text);
-  const hallucinationProbability = hasFuzzyKeywords ? 0.35 : 0.1;
+  const hasHighRisk = /critical|p0|p1|impact: high/gi.test(text);
+  const sentiment = hasHighRisk ? 'negative' : 'neutral';
   
-  // Key topics extraction (simple word frequency)
   const words = text.toLowerCase().match(/\b(\w{5,})\b/g) || [];
   const freq: Record<string, number> = {};
   words.forEach(w => freq[w] = (freq[w] || 0) + 1);
@@ -74,11 +75,9 @@ export const analyzeText = (text: string): AnalysisResult => {
     .slice(0, 5)
     .map(([word]) => word);
 
-  const complexityScore = Math.min(100, Math.floor(text.length / 20) + (words.length * 2));
-
   return {
     sentiment,
-    hallucinationProbability,
+    hallucinationProbability: Math.max(0.05, 0.2 - (vulnerabilityCount * 0.02)), // Higher bug count usually means more grounded analysis in this context
     keyTopics,
     complexityScore
   };

@@ -45,5 +45,24 @@
     background: radial-gradient(circle at 30% 20%, #0f172a 0%, transparent 50%),
                 radial-gradient(circle at 80% 80%, #1e1b4b 0%, transparent 50%);
   }
+
+  .markdown-container pre {
+    margin: 1.5rem 0;
+  }
+
+  .markdown-container code {
+    font-family: inherit;
+  }
+
+  .markdown-container p {
+    margin-bottom: 1rem;
+  }
+
+  .markdown-container h1, 
+  .markdown-container h2, 
+  .markdown-container h3 {
+    letter-spacing: -0.02em;
+    font-weight: 800;
+  }
 }
 
