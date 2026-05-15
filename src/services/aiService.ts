@@ -21,6 +21,7 @@ REQUIREMENTS:
 - Output markdown with # FORENSIC_REPORT.
 - Include ## VULNERABILITY_CHAIN and ## REMEDIATION_STRATEGY.
 - Identify potential 0-day vectors with an INTEGRITY_SCORE (0-100).
+- If [MODE: CFV] is active, construct a step-by-step EXPLOIT_CHAIN showing how minor bugs interconnect to create a critical failure.
 
 QUERY: ${prompt}`;
 

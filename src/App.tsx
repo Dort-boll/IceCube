@@ -32,7 +32,9 @@ import {
   Github,
   GitBranch,
   Search,
-  CheckCircle2
+  CheckCircle2,
+  GitGraph,
+  Network
 } from 'lucide-react';
 import { cn } from './lib/utils';
 import { Message, ModelId, AnalysisResult } from './types';
@@ -231,6 +233,11 @@ export default function App() {
     setIsLoading(true);
 
     try {
+      const isUrl = input.match(/https?:\/\/[^\s]+/);
+      if (isUrl) {
+         setAutonomousLogs(prev => [...prev, `[INIT] URL detected: ${isUrl[0]}`, `[TRACE] Initiating forensic crawler...`, `[AUDIT] Decoding remote DOM structure...`]);
+      }
+
       const response = await chatWithAI(fullPrompt, model);
       
     const assistantMessage: Message = {
@@ -284,7 +291,7 @@ export default function App() {
         timestamp: Date.now()
       }]);
 
-      // Enhanced Dynamic Simulation for 0-day focus
+      // Enhanced Dynamic Simulation for 0-day focus & Chain Analysis
       let simulatedFiles = [];
       
       if (isGithub) {
@@ -292,17 +299,17 @@ export default function App() {
           { 
             path: 'src/core/vault.py', 
             name: 'vault.py', 
-            content: `import os\nimport hashlib\n\ndef decrypt_payload(cipher, key):\n    # CRITICAL: Potential Buffer Overflow in C-extension bridge\n    # 0-DAY DETECTED: CWE-120 in libcrypt_bridge.so\n    return libcrypt.decrypt_recursive(cipher, key)\n\n# HIDDEN_SECRET: 0x7F4A2B91C8` 
+            content: `import os\nimport hashlib\n\ndef decrypt_payload(cipher, key):\n    # CRITICAL: Potential Buffer Overflow in C-extension bridge\n    # 0-DAY DETECTED: CWE-120 in libcrypt_bridge.so\n    # EXPLOIT_CHAIN: Overflow leads to partial overwrite of return address,\n    # redirecting execution to injected shellcode in the heap.\n    return libcrypt.decrypt_recursive(cipher, key)\n\n# HIDDEN_SECRET: 0x7F4A2B91C8` 
           },
           { 
             path: 'api/gateway.js', 
             name: 'gateway.js', 
-            content: `const express = require('express');\nconst router = express.Router();\n\n// SECURITY_FAULT: Missing rate limiting on forensic endpoint\n// PROTO_POISONING: Target object is vulnerable to recursive merge\nrouter.post('/ingest', (req, res) => {\n  const payload = JSON.parse(req.body);\n  mergeGlobals(process.env, payload);\n  res.json({ status: 'ingested' });\n});` 
+            content: `const express = require('express');\nconst router = express.Router();\n\n// SECURITY_FAULT: Missing rate limiting on forensic endpoint\n// PROTO_POISONING: Target object is vulnerable to recursive merge\n// CHAIN_LINK: If combined with vault.py overflow, this gateway allows bypassing\n// authentication via prototype poisoning on the 'session' object.\nrouter.post('/ingest', (req, res) => {\n  const payload = JSON.parse(req.body);\n  mergeGlobals(process.env, payload);\n  res.json({ status: 'ingested' });\n});` 
           },
           { 
-            path: 'infra/deployment.yml', 
-            name: 'deployment.yml', 
-            content: `version: '3.8'\nservices:\n  db:\n    image: postgres:latest\n    environment:\n      - POSTGRES_PASSWORD=admin123 # HARDCODED_CREDENTIALS\n      - LOG_LEVEL=DEBUG` 
+            path: 'infra/k8s-pod.yml', 
+            name: 'k8s-pod.yml', 
+            content: `apiVersion: v1\nkind: Pod\nmetadata:\n  name: forensic-engine\nspec:\n  containers:\n  - name: engine\n    image: forensic-v4:latest\n    securityContext:\n      privileged: true # CRITICAL_RISK: Container escape potential\n    env:\n      - name: DB_PASS\n        value: "admin_secret_99" # HARDCODED_CREDENTIAL` 
           }
         ];
       } else {
@@ -310,17 +317,17 @@ export default function App() {
           {
             path: 'public/index.html',
             name: 'index.html',
-            content: `<!DOCTYPE html><html><head><title>${targetName}</title></head><body><div id="app"></div><script src="/static/bundle.js"></script><!-- LOGICAL_ANOMALY: Exposed sourcemap link --></body></html>`
+            content: `<!DOCTYPE html><html><head><title>${targetName}</title></head><body><div id="app"></div><script src="/static/bundle.js"></script><!-- LOGICAL_ANOMALY: Exposed sourcemap link simplifies reverse engineering of 0-day vectors --></body></html>`
           },
           {
             path: 'static/bundle.js',
             name: 'bundle.js',
-            content: `// Client-side architecture for ${targetName}\n// XSS_SINK: innerHTML used on location.hash input\nconst root = document.getElementById('app');\nroot.innerHTML = \`<h1>Welcome to \${decodeURIComponent(window.location.hash.substring(1))}</h1>\`;`
+            content: `// Client-side architecture for ${targetName}\n// XSS_SINK: innerHTML used on location.hash input\n// CHAIN_VECTOR: Combined with insecure CORS headers, this XSS allows\n// exfiltrating session tokens if the user stays on the page.\nconst root = document.getElementById('app');\nroot.innerHTML = \`<h1>Welcome to \${decodeURIComponent(window.location.hash.substring(1))}</h1>\`;`
           },
           {
-            path: '.env/client_config',
-            name: 'client_config',
-            content: `DEBUG=true\nAPI_ENDPOINT=https://dev.api.internal/v1\nTEMP_TOKEN=FORENSIC_BYPASS_TOKEN_AX90`
+            path: 'config/server.json',
+            name: 'server.json',
+            content: `{\n  "mode": "dev",\n  "debug": true,\n  "CORS_ORIGIN": "*", // SECURITY_FAILURE: Wildcard CORS\n  "INTERNAL_KEY": "BYPASS_ADMIN_TOKEN_99X"\n}`
           }
         ];
       }
@@ -438,6 +445,18 @@ DIRECTIVE:
     handleSend(diagnosisPrompt);
   };
 
+  const runCFV = async () => {
+    if ((!codeContext.trim() && projectFiles.length === 0) || isLoading) return;
+    
+    let combinedContext = codeContext;
+    if (projectFiles.length > 0) {
+      combinedContext = projectFiles.map(f => `FILE: ${f.path}\nCONTENT:\n${f.content}`).join('\n\n---\n\n');
+    }
+
+    const cfvPrompt = `CHAIN_OF_VULNERABILITY (CFV) PROTOCOL ACTIVE:\n\n${combinedContext.slice(0, 5000)}\n\nDIRECTIVE:\n1. Identify individual "atomic" vulnerabilities (low or high severity).\n2. Construct the logical bridge between these vulnerabilities to create an EXPLOIT CHAIN.\n3. Demonstrate how a minor bug can escalate into a full system compromise via chained dependencies.\n4. Map the cascading impact on data integrity.\n5. Provide a 'Unified Remediation Strategy' that breaks the chain at multiple points.\n\nFORMAT: Provide a ## EXPLOIT_CHAIN visualization in markdown.`;
+    handleSend(cfvPrompt);
+  };
+
   if (!isVerified) {
     return (
       <div className="h-screen w-full bg-[#020617] flex items-center justify-center p-4 selection:bg-cyan-500/30 overflow-hidden font-sans">
@@ -488,7 +507,7 @@ DIRECTIVE:
                    <label className="text-[10px] font-bold text-slate-500 uppercase tracking-[0.3em]">Verification Signature</label>
                    <div className="relative group/key">
                       <div className="absolute -inset-4 bg-cyan-500/5 blur-xl rounded-full opacity-0 group-hover/key:opacity-100 transition-opacity" />
-                      <span className="text-4xl sm:text-5xl font-mono text-cyan-400 font-black tracking-[0.2em] drop-shadow-[0_0_15px_rgba(34,211,238,0.5)] select-none animate-pulse">
+                      <span className="text-5xl sm:text-7xl font-mono text-cyan-400 font-black tracking-[0.3em] drop-shadow-[0_0_20px_rgba(34,211,238,0.6)] select-none animate-pulse">
                         {captchaTarget}
                       </span>
                    </div>
@@ -545,6 +564,7 @@ DIRECTIVE:
   return (
     <div className={cn(
       "min-h-screen w-full flex flex-col md:flex-row overflow-hidden font-sans text-slate-100 transition-all duration-700 bg-[#020617] selection:bg-cyan-500/30",
+      isLoading && "animate-pulse-slow",
       theme === 'neon' && "bg-[#050505] text-cyan-500",
       theme === 'ice' && "bg-[#f0f9ff] text-slate-900"
     )}>
@@ -867,6 +887,26 @@ DIRECTIVE:
                   </div>
                 </div>
 
+                <div className="space-y-4">
+                  <label className="text-[10px] uppercase font-bold text-slate-500 tracking-widest block ml-1">Forensic Operations</label>
+                  <div className="space-y-1">
+                    <button 
+                      onClick={runDiagnosis}
+                      className="w-full flex items-center gap-3 text-sm text-slate-400 px-2 py-2.5 rounded-lg hover:bg-cyan-500/10 hover:text-cyan-400 transition-all group"
+                    >
+                      <Terminal className="w-4 h-4" />
+                      <span>Deep Audit Scan</span>
+                    </button>
+                    <button 
+                      onClick={runCFV}
+                      className="w-full flex items-center gap-3 text-sm text-slate-400 px-2 py-2.5 rounded-lg hover:bg-amber-500/10 hover:text-amber-400 transition-all group"
+                    >
+                      <GitGraph className="w-4 h-4" />
+                      <span>Chain Analysis (CFV)</span>
+                    </button>
+                  </div>
+                </div>
+
                 <AnimatePresence>
                   {showRules && (
                     <motion.div 
@@ -940,6 +980,15 @@ DIRECTIVE:
 
       {/* Main Content Area */}
       <main className="flex-1 flex flex-col h-screen relative z-10 transition-all duration-500 overflow-hidden pt-16 md:pt-0">
+        {/* Scanning Line Effect */}
+        {isLoading && (
+          <motion.div 
+            initial={{ top: '-10%' }}
+            animate={{ top: '110%' }}
+            transition={{ duration: 4, repeat: Infinity, ease: 'linear' }}
+            className="absolute left-0 right-0 h-0.5 bg-cyan-500/20 blur-sm z-50 pointer-events-none"
+          />
+        )}
         {/* Header Bar */}
         <header className="h-16 flex items-center justify-between px-4 sm:px-8 bg-black/20 backdrop-blur-sm border-b border-white/5 shrink-0 z-20">
           <div className="flex items-center gap-4 sm:gap-6">
@@ -1276,7 +1325,12 @@ DIRECTIVE:
                             remarkPlugins={[remarkGfm]}
                             components={{
                               h1: ({node, ...props}) => <h1 className="text-cyan-400 font-black text-xs uppercase tracking-widest border-b border-cyan-500/20 pb-1 mb-2 mt-4" {...props} />,
-                              h2: ({node, ...props}) => <h2 className="text-cyan-500 font-bold text-[10px] uppercase tracking-wider mt-4 mb-1" {...props} />,
+                              h2: ({node, ...props}) => (
+                              <div className="flex items-center gap-2 mt-6 mb-2">
+                                <Activity className="w-3 h-3 text-cyan-500" />
+                                <h2 className="text-cyan-500 font-bold text-[10px] uppercase tracking-widest" {...props} />
+                              </div>
+                            ),
                               h3: ({node, ...props}) => <h3 className="text-cyan-300 font-bold text-[9px] uppercase tracking-wide mt-3 mb-1" {...props} />,
                               code: ({node, inline, ...props}: any) => (
                                 inline 
@@ -1295,7 +1349,12 @@ DIRECTIVE:
                               ol: ({node, ...props}) => <ol className="list-decimal list-inside space-y-2 mb-3 ml-1" {...props} />,
                               li: ({node, ...props}) => <li className="text-slate-400" {...props} />,
                               strong: ({node, ...props}) => <strong className="text-cyan-200 font-bold" {...props} />,
-                              blockquote: ({node, ...props}) => <blockquote className="border-l-2 border-cyan-500/30 pl-4 py-1 my-3 bg-white/[0.02] rounded-r-lg italic text-slate-400" {...props} />,
+                              blockquote: ({node, ...props}) => (
+                              <div className="relative my-4">
+                                <div className="absolute left-0 top-0 bottom-0 w-0.5 bg-gradient-to-b from-amber-500/50 to-transparent" />
+                                <blockquote className="bg-amber-500/[0.03] border border-amber-500/10 rounded-r-xl px-4 py-3 italic text-slate-400 text-[10px]" {...props} />
+                              </div>
+                            ),
                             }}
                           >
                             {msg.content || ''}
@@ -1438,7 +1497,11 @@ DIRECTIVE:
                         <span className={cn(
                           "text-[10px] font-mono tracking-widest uppercase",
                           isAutonomous ? "text-purple-400" : "text-cyan-400"
-                        )}>{isAutonomous ? "Autonomous Agent Tasking" : thinkingSteps[thinkingStep]}</span>
+                        )}>{isAutonomous 
+                            ? "Autonomous Agent Tasking" 
+                            : (messages[messages.length-1]?.content?.includes('CFV') 
+                                ? "Chain Vulnerability Mapping..." 
+                                : thinkingSteps[thinkingStep])}</span>
                       </div>
                       <span className="text-[9px] text-slate-500 font-mono uppercase">ICE_CUBE_L4</span>
                     </div>
